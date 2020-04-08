@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform:
+  - AWS::Serverless-2016-10-31
+
+Parameters:
+
+  ProjectName:
+    Type: String
+    Default: helloworld
+    Description: Name of the API - used to generate unique names for resources
+    MinLength: 2
+    MaxLength: 20
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9_]*$'
+
+  EnvironmentName:
+    Type: String
+    Default: testing
+    Description: Env Name
+    MinLength: 2
+    MaxLength: 20
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9_]*$'
+
+Globals:
+  Function:
+    AutoPublishAlias: live
+    DeploymentPreference:
+      Enabled: true
+      Type: AllAtOnce
+
+Resources:
+
+  ProfileLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${EnvironmentName}-${ProjectName}-LambdaRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AWSXrayWriteOnlyAccess'
+        - Ref: ProfileGQLPolicy
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+    DependsOn:
+      - ProfileGQLPolicy
+
+  ProfileGQLPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Managed policy to allow AWS AppSync to access DynamoDB table
+      Path: /profile/
+      ManagedPolicyName: !Sub ${EnvironmentName}-${ProjectName}-Policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:*
+              - lambda:InvokeFunction
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              - s3:*Object
+              - sns:Publish
+              - sqs:*
+              - es:*
+            Resource:
+              - arn:aws:s3:::*/*
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${EnvironmentName}-${ProjectName}*"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*"
+              - !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${EnvironmentName}-${ProjectName}*"
+              - !Sub "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvironmentName}-${ProjectName}*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              - !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${EnvironmentName}-${ProjectName}*"      
+          - Effect: "Allow"
+            Action: 
+              - "codedeploy:PutLifecycleEventHookExecutionStatus"
+            Resource:
+              !Sub 'arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:*/*'
+
+######################################
+########## API Gateway ###############
+######################################
+
+  ApiGatewayRest:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub ${EnvironmentName}-${ProjectName}-RestApi
+      StageName: !Sub ${EnvironmentName}
+      Variables:
+        apiAlias: live
+      TracingEnabled: true
+
+## HelloWorld
+  HelloWorldLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${EnvironmentName}-${ProjectName}_LambdaHelloWorld
+      Description: Lambda Hello
+      Handler: LambdaHelloWorld.lambda_handler
+      Role: !GetAtt ProfileLambdaRole.Arn
+      Runtime: python3.7
+      Tracing: Active
+      Events:
+        LambdaHelloWorldvent:
+          Type: Api
+          Properties:
+            Path: /
+            Method: get
+            RestApiId: !Ref ApiGatewayRest
+
+  
