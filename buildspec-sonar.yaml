@@ -16,7 +16,7 @@ phases:
       - export PATH=$PATH:$CODEBUILD_SRC_DIR/sonar-scanner-4.2.0.1873-linux/bin/
   build:
     commands:   
-      - sonar-scanner -Dsonar.organization=$Organization -Dsonar.projectKey=$Project -Dsonar.host.url=$HOST -Dsonar.login=$LOGIN -Dsonar.sources=./src
+      - sonar-scanner -Dsonar.organization=$Organization -Dsonar.projectKey=$Project -Dsonar.host.url=$HOST -Dsonar.login=$LOGIN
       - sleep 5
       - curl https://sonarcloud.io/api/qualitygates/project_status?projectKey=$Project >result.json
       - cat result.json
